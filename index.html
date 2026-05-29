@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <title>Eco Mapa · Municipalidad</title>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css">
+</head>
+
+<body>
+
+  <!-- LOADING -->
+  <div class="loading-overlay" id="loading">
+    <div class="spinner"></div>
+  </div>
+
+  <!-- TOAST -->
+  <div class="toast" id="toast"></div>
+
+  <!-- MODAL MARCADOR MAPA -->
+  <div class="modal-overlay" id="modal-marcador">
+    <div class="modal-box">
+      <div class="modal-handle"></div>
+      <h3 class="modal-titulo" id="modal-titulo">Contenedor</h3>
+      <p class="modal-info" id="modal-info"></p>
+      <img class="modal-foto" id="modal-foto" src="" alt="Foto del contenedor" />
+      <button class="modal-cerrar" onclick="cerrarModal()">Cerrar</button>
+    </div>
+  </div>
+
+  <!-- PIN JEFE -->
+  <div class="jefe-pin-overlay" id="jefe-pin-overlay" style="display:none;">
+    <div class="jefe-pin-box">
+      <h3>Acceso Jefe</h3>
+      <p>Ingresá el PIN de supervisor para continuar.</p>
+      <input type="password" id="pin-input" maxlength="6" placeholder="••••••" inputmode="numeric" />
+      <div id="pin-error" class="error-msg">PIN incorrecto.</div>
+      <div class="jefe-pin-btns">
+        <button class="btn-secundario" style="flex:1;padding:12px;" onclick="cerrarPin()">Cancelar</button>
+        <button class="btn-primario" style="flex:1;padding:12px;" onclick="verificarPin()">Ingresar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- =============================================
+     P1: BIENVENIDA
+============================================= -->
+  <div class="pantalla activa" id="p-bienvenida">
+    <div class="bienvenida-blob1"></div>
+    <div class="bienvenida-blob2"></div>
+    <div class="bienvenida-centro">
+      <div class="logo-box">
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" fill="#fff" />
+          <circle cx="12" cy="9" r="2.5" fill="#1e7e34" />
+          <path d="M15.5 4.5C16.5 3 18 3.5 17.5 5S15.5 6 15.5 4.5Z" fill="#5abe6e" />
+        </svg>
+      </div>
+      <h1 class="bienvenida-titulo">Eco Mapa</h1>
+      <p class="bienvenida-sub">Sistema de control de contenedores · Municipalidad</p>
+      <div class="bienvenida-btns">
+        <button class="btn-primario" onclick="ir('p-login')">Iniciar Sesión</button>
+        <button class="btn-secundario" onclick="ir('p-registro')">Registrarse</button>
+        <button class="btn-secundario" style="border-color:#1a237e;color:#1a237e;" onclick="pedirPinJefe()">
+          Panel Jefe de Ambiente
+        </button>
+      </div>
+      <span class="version-tag">v1.0 · Municipalidad · 2026</span>
+    </div>
+  </div>
+
+  <!-- =============================================
+     P2: REGISTRO
+============================================= -->
+  <div class="pantalla" id="p-registro">
+    <div class="form-header">
+      <button onclick="ir('p-bienvenida')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+          <path d="M15 18l-6-6 6-6" />
+        </svg>
+      </button>
+      <h2>Crear cuenta</h2>
+    </div>
+    <div class="form-body">
+      <div class="campo-grupo">
+        <label>Nombre completo</label>
+        <input type="text" id="reg-nombre" placeholder="Ej: María González" />
+      </div>
+      <div class="campo-grupo">
+        <label>DNI</label>
+        <input type="number" id="reg-dni" placeholder="Ej: 38502111" />
+      </div>
+      <div class="campo-grupo">
+        <label>Correo electrónico</label>
+        <input type="email" id="reg-email" placeholder="tucorreo@municipalidad.gov.ar" />
+      </div>
+      <div class="campo-grupo">
+        <label>Contraseña</label>
+        <input type="password" id="reg-pass" placeholder="Mínimo 6 caracteres" />
+      </div>
+      <div class="campo-grupo">
+        <label>Confirmar contraseña</label>
+        <input type="password" id="reg-pass2" placeholder="Repetir contraseña" />
+      </div>
+      <div class="campo-grupo">
+        <label>Zona asignada</label>
+        <select id="reg-zona">
+          <option value="">Seleccionar zona...</option>
+          <option value="Norte">Norte</option>
+          <option value="Sur">Sur</option>
+          <option value="Este">Este</option>
+          <option value="Oeste">Oeste</option>
+          <option value="Centro">Centro</option>
+        </select>
+      </div>
+      <div class="error-msg" id="reg-error"></div>
+      <button class="btn-primario" onclick="registrar()">Crear cuenta</button>
+      <p class="form-footer-link">¿Ya tenés cuenta? <span onclick="ir('p-login')">Iniciar Sesión</span></p>
+    </div>
+  </div>
+  <!-- =============================================
+     P3: LOGIN
+============================================= -->
+  <div class="pantalla" id="p-login">
+    <div class="form-header">
+      <button onclick="ir('p-bienvenida')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+          <path d="M15 18l-6-6 6-6" />
+        </svg>
+      </button>
+      <h2>Iniciar Sesión</h2>
+    </div>
+    <div class="form-body">
+      <div style="text-align:center;padding:10px 0 6px;">
+        <div style="font-size:2.5rem;">🌿</div>
+        <p style="font-size:0.88rem;color:var(--texto-suave);margin-top:6px;">Bienvenido de nuevo al sistema</p>
+      </div>
+      <div class="campo-grupo">
+        <label>Correo electrónico</label>
+        <input type="email" id="login-email" placeholder="tucorreo@municipalidad.gov.ar" />
+      </div>
+      <div class="campo-grupo">
+        <label>Contraseña</label>
+        <input type="password" id="login-pass" placeholder="Tu contraseña" />
+      </div>
+      <div class="error-msg" id="login-error"></div>
+      <button class="btn-primario" onclick="login()">Ingresar</button>
+      <p class="form-footer-link">¿No tenés cuenta? <span onclick="ir('p-registro')">Registrarse</span></p>
+    </div>
+  </div>
+
+  <!-- =============================================
+     P4: APP PRINCIPAL
+============================================= -->
+  <div class="pantalla" id="p-app">
+    <div class="app-header">
+      <div class="app-header-info">
+        <h3 id="app-nombre-usuario">Cargando...</h3>
+        <p id="app-zona-usuario">Zona: —</p>
+      </div>
+      <button class="btn-cerrar-sesion" onclick="cerrarSesion()">Salir</button>
+    </div>
+
+    <!-- TAB: MAPA -->
+    <div class="tab-contenido activo" id="tab-mapa">
+      <div class="mapa-container" id="mapa-contenedor">
+        <!-- Marcadores se renderizan con JS -->
+        <div class="mapa-leyenda">
+          <div class="leyenda-item"><span class="leyenda-dot" style="background:var(--verde)"></span>Limpio</div>
+          <div class="leyenda-item"><span class="leyenda-dot" style="background:var(--amarillo)"></span>Lleno</div>
+          <div class="leyenda-item"><span class="leyenda-dot" style="background:var(--rojo)"></span>Roto</div>
+        </div>
+      </div>
+      <div style="margin-top:20px;">
+        <p class="seccion-titulo">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+            stroke-linejoin="round">
+            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+            <circle cx="12" cy="10" r="3" />
+          </svg>
+          Contenedores recientes
+        </p>
+        <div id="lista-mapa"></div>
+      </div>
+    </div>
+
+    <!-- TAB: REGISTRAR -->
+    <div class="tab-contenido" id="tab-registrar">
+      <div class="form-card">
+        <div>
+          <p class="seccion-titulo">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+              stroke-linejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+            Nuevo registro
+          </p>
+        </div>
+
+        <div class="campo-grupo">
+          <label>ID / Nombre del contenedor</label>
+          <input type="text" id="reg-contenedor-id" placeholder="Ej: C-04 · Av. San Martín 500" />
+        </div>
+
+        <div class="campo-grupo">
+          <label>Estado del contenedor</label>
+          <div class="estado-selector">
+            <button class="estado-btn limpio" onclick="seleccionarEstado('limpio', this)">
+              <span class="icono-estado">✅</span>
+              <span class="label-estado">Limpio</span>
+            </button>
+            <button class="estado-btn sucio" onclick="seleccionarEstado('sucio', this)">
+              <span class="icono-estado">🟡</span>
+              <span class="label-estado">Lleno</span>
+            </button>
+            <button class="estado-btn roto" onclick="seleccionarEstado('roto', this)">
+              <span class="icono-estado">🔴</span>
+              <span class="label-estado">Roto</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="campo-grupo">
+          <label>Zona</label>
+          <select id="reg-zona-contenedor">
+            <option value="">Seleccionar zona...</option>
+            <option value="Norte">Norte</option>
+            <option value="Sur">Sur</option>
+            <option value="Este">Este</option>
+            <option value="Oeste">Oeste</option>
+            <option value="Centro">Centro</option>
+          </select>
+        </div>
+
+        <div class="campo-grupo">
+          <label>Observaciones (opcional)</label>
+          <input type="text" id="reg-observaciones" placeholder="Ej: Tapa dañada, desbordado..." />
+        </div>
+
+        <div>
+          <label
+            style="font-size:0.72rem;font-weight:700;color:var(--texto-suave);text-transform:uppercase;letter-spacing:0.7px;display:block;margin-bottom:6px;">Foto
+            (opcional)</label>
+          <div class="zona-foto" onclick="document.getElementById('input-foto').click()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+              stroke-linejoin="round">
+              <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+              <circle cx="12" cy="13" r="4" />
+            </svg>
+            <span id="foto-label">Tomar foto o elegir de galería</span>
+            <img class="foto-preview-img" id="foto-preview" src="" alt="Preview" />
+          </div>
+          <input type="file" id="input-foto" accept="image/*" capture="environment" style="display:none;"
+            onchange="previsualizarFoto(this)" />
+        </div>
+
+        <div class="error-msg" id="reg-cont-error"></div>
+        <button class="btn-primario" onclick="guardarContenedor()">💾 Guardar registro</button>
+      </div>
+    </div>
+
+    <!-- TAB: HISTORIAL -->
+    <div class="tab-contenido" id="tab-historial">
+      <p class="seccion-titulo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+          stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10" />
+          <polyline points="12 6 12 12 16 14" />
+        </svg>
+        Mi historial
+      </p>
+      <div id="historial-lista" class="historial-lista">
+        <div class="sin-registros">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+            <circle cx="12" cy="12" r="10" />
+            <line x1="8" y1="12" x2="16" y2="12" />
+          </svg>
+          <p>Sin registros todavía.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- NAVBAR INFERIOR -->
+    <nav class="navbar-inferior">
+      <button class="nav-item activo" id="nav-mapa" onclick="cambiarTab('mapa')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+          stroke-linejoin="round">
+          <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+          <circle cx="12" cy="10" r="3" />
+        </svg>
+        Mapa
+      </button>
+      <button class="nav-item" id="nav-registrar" onclick="cambiarTab('registrar')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+          stroke-linejoin="round">
+          <line x1="12" y1="5" x2="12" y2="19" />
+          <line x1="5" y1="12" x2="19" y2="12" />
+        </svg>
+        Registrar
+      </button>
+      <button class="nav-item" id="nav-historial" onclick="cambiarTab('historial')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+          stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10" />
+          <polyline points="12 6 12 12 16 14" />
+        </svg>
+        Historial
+      </button>
+    </nav>
+  </div>
+
+  <!-- =============================================
+     P5: PANEL JEFE
+============================================= -->
+  <div class="pantalla" id="p-jefe">
+    <div class="jefe-header">
+      <div style="display:flex;align-items:center;justify-content:space-between;">
+        <div>
+          <h2>Panel Supervisor 🌿</h2>
+          <p>Vista general de todos los registros</p>
+        </div>
+        <button class="btn-cerrar-sesion" onclick="ir('p-bienvenida')">← Salir</button>
+      </div>
+    </div>
+
+    <div class="jefe-stats">
+      <div class="stat-card verde">
+        <div class="stat-numero" id="stat-limpios">0</div>
+        <div class="stat-label">Limpios</div>
+      </div>
+      <div class="stat-card amarillo">
+        <div class="stat-numero" id="stat-sucios">0</div>
+        <div class="stat-label">Llenos</div>
+      </div>
+      <div class="stat-card rojo">
+        <div class="stat-numero" id="stat-rotos">0</div>
+        <div class="stat-label">Rotos</div>
+      </div>
+    </div>
+
+    <div class="jefe-cuerpo">
+      <div class="jefe-filtros">
+        <button class="filtro-btn activo" onclick="filtrarJefe('todos', this)">Todos</button>
+        <button class="filtro-btn" onclick="filtrarJefe('limpio', this)">✅ Limpios</button>
+        <button class="filtro-btn" onclick="filtrarJefe('sucio', this)">🟡 Llenos</button>
+        <button class="filtro-btn" onclick="filtrarJefe('roto', this)">🔴 Rotos</button>
+      </div>
+      <div id="jefe-registros-lista"></div>
+    </div>
+
+    <nav class="jefe-navbar">
+      <button class="btn-cerrar-sesion"
+        style="background:var(--verde);color:#fff;padding:10px 28px;border-radius:20px;font-weight:800;"
+        onclick="exportarCSV()">
+        📥 Exportar CSV
+      </button>
+    </nav>
+  </div>
+  <script type="module" src="js/script.js"></script>
+</body>
+</html>
