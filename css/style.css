@@ -419,16 +419,30 @@
 
     /* TAB MAPA */
     .mapa-container {
-      background: #dce9dc;
+      background: var(--blanco);
       border-radius: var(--radio);
       overflow: hidden;
       position: relative;
-      height: 340px;
+      height: 400px;
       box-shadow: var(--sombra);
-      background-image:
-        linear-gradient(rgba(150, 195, 150, 0.4) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(150, 195, 150, 0.4) 1px, transparent 1px);
-      background-size: calc(100%/3) calc(100%/3);
+      margin-bottom: 20px;
+    }
+
+    #mapa {
+      width: 100%;
+      height: 100%;
+      border-radius: var(--radio);
+    }
+
+    #mapa-fullscreen {
+      width: 100%;
+      height: 100%;
+    }
+
+    .leaflet-container {
+      background: #e0e0e0;
+      font-family: var(--font);
+      z-index: 1;
     }
 
     .mapa-marker {

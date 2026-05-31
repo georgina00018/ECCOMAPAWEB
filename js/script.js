@@ -42,6 +42,10 @@ let usuarioActual = null;
 let estadoSeleccionado = null;
 let fotoBase64 = null;
 let filtroJefeActivo = 'todos';
+// Map state (Leaflet)
+let mapaInicializado = false;
+let mapa = null;
+let markersGroup = null;
 
 window.ir = function(pantalla) {
   document.querySelectorAll('.pantalla').forEach(p => p.classList.remove('activa'));
@@ -119,13 +123,19 @@ async function _obtenerRegistrosTodos() {
 }
 
 async function _obtenerRegistrosPorUsuario(uid) {
+  // Sin orderBy para evitar requerir índice compuesto en Firebase
   const registrosQuery = query(
     collection(db, 'registros'),
-    where('creadoPor', '==', uid),
-    orderBy('creadoEn', 'desc')
+    where('creadoPor', '==', uid)
   );
   const snapshot = await getDocs(registrosQuery);
-  return snapshot.docs.map(docItem => ({ id: docItem.id, ...docItem.data() }));
+  const items = snapshot.docs.map(docItem => ({ id: docItem.id, ...docItem.data() }));
+  // Ordenar en cliente (más recientes primero)
+  return items.sort((a, b) => {
+    const timeA = a.creadoEn?.toMillis?.() || 0;
+    const timeB = b.creadoEn?.toMillis?.() || 0;
+    return timeB - timeA;
+  });
 }
 
 window.registrar = async function() {
@@ -259,15 +269,65 @@ window.previsualizarFoto = function(input) {
   reader.readAsDataURL(file);
 };
 
+window.obtenerUbicacion = function() {
+  const estadoEl = document.getElementById('ubicacion-estado');
+  if (!('geolocation' in navigator)) {
+    if (estadoEl) estadoEl.textContent = 'Geolocalización no soportada en este dispositivo.';
+    mostrarToast('Geolocalización no soportada.', 'error');
+    console.warn('Geolocalización no soportada');
+    return;
+  }
+
+  if (estadoEl) estadoEl.textContent = 'Obteniendo ubicación (permitir acceso si pide permiso)...';
+  console.log('Iniciando geolocalización...');
+  const opciones = { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 };
+  navigator.geolocation.getCurrentPosition(pos => {
+    const lat = pos.coords.latitude;
+    const lon = pos.coords.longitude;
+    const accuracy = pos.coords.accuracy;
+    console.log(`✓ Ubicación obtenida: Lat ${lat}, Lon ${lon}, Precisión: ±${accuracy.toFixed(0)}m`);
+    const latEl = document.getElementById('reg-latitud');
+    const lonEl = document.getElementById('reg-longitud');
+    if (latEl) latEl.value = lat.toFixed(6);
+    if (lonEl) lonEl.value = lon.toFixed(6);
+    if (estadoEl) estadoEl.textContent = `✓ Ubicación real: ${lat.toFixed(6)}, ${lon.toFixed(6)} (±${accuracy.toFixed(0)}m)`;
+    mostrarToast('Ubicación actual registrada', 'exito');
+  }, err => {
+    console.error('geolocation error code:', err.code, 'mensaje:', err.message);
+    if (estadoEl) {
+      if (err.code === 1) estadoEl.textContent = '❌ Permiso denegado. Habilitá ubicación en ajustes del navegador.';
+      else if (err.code === 2) estadoEl.textContent = '❌ No se pudo obtener la ubicación (no hay señal GPS).';
+      else if (err.code === 3) estadoEl.textContent = '❌ Timeout al obtener ubicación (tardó demasiado).';
+      else estadoEl.textContent = '❌ Error desconocido: ' + err.message;
+    }
+    mostrarToast('No se pudo obtener la ubicación.', 'error');
+  }, opciones);
+};
+
 window.guardarContenedor = async function() {
   const id = document.getElementById('reg-contenedor-id').value.trim();
   const zona = document.getElementById('reg-zona-contenedor').value;
   const obs = document.getElementById('reg-observaciones').value.trim();
+  const latVal = document.getElementById('reg-latitud')?.value.trim();
+  const lonVal = document.getElementById('reg-longitud')?.value.trim();
 
   _ocultarError('reg-cont-error');
 
   if (!id || !estadoSeleccionado || !zona) {
     _mostrarError('reg-cont-error', 'Completá ID, estado y zona.');
+    return;
+  }
+
+  // Validar ubicación: exigir latitud y longitud
+  if (!latVal || !lonVal) {
+    _mostrarError('reg-cont-error', 'Obtené la ubicación actual antes de guardar (botón 📍).');
+    return;
+  }
+
+  const lat = parseFloat(latVal.replace(',', '.'));
+  const lon = parseFloat(lonVal.replace(',', '.'));
+  if (Number.isNaN(lat) || Number.isNaN(lon)) {
+    _mostrarError('reg-cont-error', 'Latitud o longitud inválida. Verificá los valores.');
     return;
   }
 
@@ -284,6 +344,8 @@ window.guardarContenedor = async function() {
       estado: estadoSeleccionado,
       zona,
       observaciones: obs,
+      lat: lat,
+      lon: lon,
       foto: fotoBase64 || null,
       creadoPor: usuario.uid,
       creadoPorNombre: usuario.nombre,
@@ -302,7 +364,13 @@ window.guardarContenedor = async function() {
     cargarRegistrosJefe();
   } catch (error) {
     console.error('guardarContenedor error:', error);
-    _mostrarError('reg-cont-error', error.message || 'No se pudo guardar el registro. Intentá de nuevo.');
+    // Manejo específico para permisos insuficientes en Firestore
+    if (error && (error.code === 'permission-denied' || (error.message && error.message.toLowerCase().includes('permission')))) {
+      _mostrarError('reg-cont-error', 'Permisos insuficientes en Firestore. Revisá las reglas de seguridad (permission-denied).');
+      mostrarToast('Permisos insuficientes para guardar.', 'error');
+    } else {
+      _mostrarError('reg-cont-error', error.message || 'No se pudo guardar el registro. Intentá de nuevo.');
+    }
   } finally {
     ocultarLoading();
   }
@@ -312,13 +380,16 @@ window.cargarHistorial = async function() {
   const lista = document.getElementById('historial-lista');
   if (!lista) return;
   if (!usuarioActual) {
+    console.warn('usuarioActual no existe');
     lista.innerHTML = `<div class="sin-registros"><p>Iniciá sesión para ver tu historial.</p></div>`;
     return;
   }
 
+  console.log('Cargando historial del usuario:', usuarioActual.uid, usuarioActual.nombre);
   mostrarLoading();
   try {
     const items = await _obtenerRegistrosPorUsuario(usuarioActual.uid);
+    console.log('Registros obtenidos:', items.length);
     if (!items.length) {
       lista.innerHTML = `<div class="sin-registros"><p>Sin registros todavía.</p></div>`;
       return;
@@ -333,6 +404,9 @@ window.cargarHistorial = async function() {
         <div class="historial-obs">${r.observaciones || ''}</div>
       </div>
     `).join('');
+  } catch (error) {
+    console.error('Error cargando historial:', error);
+    lista.innerHTML = `<div class="sin-registros"><p>Error al cargar historial: ${error.message}</p></div>`;
   } finally {
     ocultarLoading();
   }
@@ -398,7 +472,8 @@ window.exportarCSV = async function() {
 
 window.cargarMapa = async function() {
   const lista = document.getElementById('lista-mapa');
-  if (!lista) return;
+  const mapaDiv = document.getElementById('mapa');
+  if (!lista || !mapaDiv) return;
   mostrarLoading();
   try {
     const items = await _obtenerRegistrosTodos();
@@ -409,6 +484,62 @@ window.cargarMapa = async function() {
         <div class="muted">${r.zona} · ${r.estado}</div>
       </div>
     `).join('') || '<div class="sin-registros"><p>No hay contenedores recientes.</p></div>';
+
+    // Inicializar mapa si hace falta
+    if (!mapaInicializado && typeof L !== 'undefined') {
+      console.log('Inicializando Leaflet mapa...');
+      try {
+        const mapElement = document.getElementById('mapa');
+        if (mapElement) {
+          mapa = L.map('mapa', { zoomControl: true }).setView([-34.6037, -58.3816], 13);
+          L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; OpenStreetMap contributors'
+          }).addTo(mapa);
+          markersGroup = L.layerGroup().addTo(mapa);
+          mapaInicializado = true;
+          console.log('✓ Leaflet mapa inicializado correctamente');
+        } else {
+          console.error('Elemento #mapa no encontrado en el DOM');
+        }
+      } catch (e) {
+        console.error('Error inicializando mapa:', e);
+      }
+    }
+
+    // Limpiar marcadores previos
+    if (markersGroup) markersGroup.clearLayers();
+
+    // Añadir marcadores desde registros que tengan lat/lon
+    const marcadorCoords = [];
+    items.forEach(r => {
+      const lat = parseFloat(r.lat);
+      const lon = parseFloat(r.lon);
+      if (!Number.isNaN(lat) && !Number.isNaN(lon)) {
+        try {
+          const marker = L.marker([lat, lon]);
+          const popupHtml = `
+            <div style="min-width:150px">
+              <strong>${r.contenedor}</strong><br/>
+              <small>${r.zona} · ${r.estado}</small><br/>
+              ${r.observaciones ? `<div style=\"margin-top:6px;\">${r.observaciones}</div>` : ''}
+              ${r.foto ? `<div style=\"margin-top:6px;\"><img src=\"${r.foto}\" style=\"width:120px;border-radius:6px;\"/></div>` : ''}
+            </div>
+          `;
+          marker.bindPopup(popupHtml);
+          marker.addTo(markersGroup);
+          marcadorCoords.push([lat, lon]);
+        } catch (e) {
+          console.error('Error creando marcador', e);
+        }
+      }
+    });
+
+    // Ajustar vista del mapa a los marcadores
+    if (marcadorCoords.length && mapa) {
+      const bounds = L.latLngBounds(marcadorCoords);
+      mapa.fitBounds(bounds, { padding: [40, 40], maxZoom: 17 });
+    }
+
   } finally {
     ocultarLoading();
   }
@@ -419,6 +550,63 @@ function onLoginSuccess() {
   document.getElementById('app-zona-usuario').textContent = 'Zona: ' + (usuarioActual.zona || '—');
   ir('p-app');
 }
+
+window.cerrarModal = function() {
+  document.getElementById('modal-marcador').style.display = 'none';
+};
+
+window.abrirMapaFullscreen = async function() {
+  const modal = document.getElementById('modal-mapa-fullscreen');
+  if (!modal) return;
+  modal.style.display = 'flex';
+  setTimeout(async () => {
+    if (typeof L !== 'undefined' && !document.getElementById('mapa-fullscreen').dataset.initialized) {
+      try {
+        const mapFull = L.map('mapa-fullscreen', { zoomControl: true }).setView([-34.6037, -58.3816], 13);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '&copy; OpenStreetMap contributors'
+        }).addTo(mapFull);
+        const markerGroupFull = L.layerGroup().addTo(mapFull);
+        const items = await _obtenerRegistrosTodos();
+        const coords = [];
+        items.forEach(r => {
+          const lat = parseFloat(r.lat);
+          const lon = parseFloat(r.lon);
+          if (!Number.isNaN(lat) && !Number.isNaN(lon)) {
+            try {
+              const marker = L.marker([lat, lon]);
+              const popupHtml = `
+                <div style="min-width:180px">
+                  <strong>${r.contenedor}</strong><br/>
+                  <small>${r.zona} · ${r.estado}</small><br/>
+                  ${r.observaciones ? `<div style="margin-top:6px;">${r.observaciones}</div>` : ''}
+                  ${r.foto ? `<div style="margin-top:6px;"><img src="${r.foto}" style="width:140px;border-radius:6px;"/></div>` : ''}
+                </div>
+              `;
+              marker.bindPopup(popupHtml);
+              marker.addTo(markerGroupFull);
+              coords.push([lat, lon]);
+            } catch (e) {
+              console.error('Error en marcador fullscreen:', e);
+            }
+          }
+        });
+        if (coords.length) {
+          const bounds = L.latLngBounds(coords);
+          mapFull.fitBounds(bounds, { padding: [50, 50], maxZoom: 17 });
+        }
+        document.getElementById('mapa-fullscreen').dataset.initialized = 'true';
+        console.log('✓ Mapa fullscreen inicializado');
+      } catch (e) {
+        console.error('Error inicializando mapa fullscreen:', e);
+      }
+    }
+  }, 100);
+};
+
+window.cerrarMapaFullscreen = function() {
+  document.getElementById('modal-mapa-fullscreen').style.display = 'none';
+};
 
 onAuthStateChanged(auth, async user => {
   if (user) {
